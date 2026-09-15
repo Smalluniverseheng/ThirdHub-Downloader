@@ -5,35 +5,34 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v4
-
     - name: Set up JDK 17
       uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-      with:
-        sdk-version: '34'
-        build-tools-version: '34.0.0'
-
-    - name: Accept licenses
-      run: yes | sdkmanager --licenses || true
-
-    - name: Build Debug APK
+      with: { java-version: '17', distribution: 'temurin' }
+    - name: Accept licenses（runner 预装 SDK）
+      run: yes | sdkmanager --licenses >/dev/null 2>&1 || true
+    - name: Build Release APK
       run: |
         chmod +x gradlew
-        ./gradlew assembleDebug --stacktrace
-
-    - name: Upload APK
+        ./gradlew assembleRelease --no-daemon --stacktrace
+        mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/thirdhub-downloader.apk
+    - name: 发 Release
+      uses: softprops/action-gh-release@v2
+      with: { files: app/build/outputs/apk/release/thirdhub-downloader.apk, tag_name: v1.0.0, body: "ThirdHub-Downloader 官方下载器" }
+    - name: 上传 Supabase 下载桶（网站直链）
+      run: |
+        curl -s -X POST "https://mxvxlgjzeboktufumxbp.supabase.co/storage/v1/object/downloads/thirdhub/thirdhub-downloader.apk" \
+          -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" -H "x-upsert: true" \
+          -H "Content-Type: application/vnd.android.package-archive" \
+          --data-binary @app/build/outputs/apk/release/thirdhub-downloader.apk
+    - name: Upload artifact
       uses: actions/upload-artifact@v4
-      with:
-        name: ThirdHub-Downloader-debug
-        path: app/build/outputs/apk/debug/app-debug.apk
+      continue-on-error: true
+      with: { name: thirdhub-downloader-apk, path: app/build/outputs/apk/release/thirdhub-downloader.apk }
